@@ -16,6 +16,7 @@ export async function searchSpotify(query) {
     })
 
     return res.data.tracks.items.map((track) => ({
+        id: track.id,
        title: track.name,
        artist: track.artists.map((a) => a.name).join(', '),
        cover: track.album.images[0]?.url,

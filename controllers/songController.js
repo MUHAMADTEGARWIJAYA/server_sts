@@ -19,38 +19,64 @@ export async function searchSong(req, res) {
 
 export async function createMessage(req, res) {
     try {
-      const { from, to, pesan, title } = req.body;
-  
-      if (  !to || !pesan || !title) {
-        return res.status(400).json({ msg: 'Data tidak lengkap' });
-      }
-  
-      // Cari lagu dari Spotify
-      const songs = await searchSpotify(title);
-      if (!songs.length) return res.status(404).json({ msg: 'Lagu tidak ditemukan di Spotify' });
-  
-      const song = songs[0]; // ambil hasil paling atas
-  
-      const newMessage = new Message({
-        from: from || 'Anonim',
-        to,
-        pesan,
-        title: song.title,
-        artist: song.artist,
-        cover: song.cover,
-        spotify_url: song.spotify_url,
-        preview_url: song.preview_url,
-      });
-  
-      await newMessage.save();
-  
-      res.status(201).json({ msg: 'Pesan berhasil disimpan', data: newMessage });
-    } catch (err) {
-      console.error('Error simpan pesan:', err.message);
-      res.status(500).json({ msg: 'Gagal simpan pesan', error: err.message });
-    }
-  }
+        const { from, to, pesan, song_id, title, artist, cover, spotify_url, preview_url } = req.body;
 
+        // Validasi dasar
+        if (!to || !pesan) {
+            return res.status(400).json({ msg: 'Penerima dan Pesan tidak boleh kosong.' });
+        }
+
+        let finalSongData = null;
+
+        // PRIORITAS 1: Coba gunakan data lagu yang sudah dikirim dari frontend (termasuk song_id)
+        if (song_id && title && artist && cover) {
+            finalSongData = {
+                id: song_id, // Gunakan song_id dari frontend
+                title: title,
+                artist: artist,
+                cover: cover,
+                spotify_url: spotify_url,
+                preview_url: preview_url
+            };
+            console.log('Menggunakan data lagu dari frontend.');
+        } else if (title) {
+            // PRIORITAS 2: Jika data dari frontend tidak lengkap, coba cari ulang berdasarkan judul
+            console.log(`Data lagu dari frontend tidak lengkap, mencari ulang berdasarkan judul: ${title}`);
+            const songs = await searchSpotify(title);
+            if (!songs.length) {
+                return res.status(404).json({ msg: 'Lagu tidak ditemukan di Spotify berdasarkan judul.' });
+            }
+            finalSongData = songs[0]; // Ambil hasil paling atas
+        } else {
+            // Jika tidak ada song_id/detail dari frontend dan tidak ada title untuk dicari
+            return res.status(400).json({ msg: 'Tidak ada informasi lagu yang cukup untuk disimpan.' });
+        }
+
+        // Pastikan finalSongData sudah terisi
+        if (!finalSongData || !finalSongData.id || !finalSongData.title || !finalSongData.artist || !finalSongData.cover) {
+             return res.status(500).json({ msg: 'Gagal mendapatkan detail lagu yang valid.' });
+        }
+
+        const newMessage = new Message({
+            from: from || 'Anonim',
+            to,
+            pesan,
+            song_id: finalSongData.id,
+            title: finalSongData.title,
+            artist: finalSongData.artist,
+            cover: finalSongData.cover,
+            spotify_url: finalSongData.spotify_url,
+            preview_url: finalSongData.preview_url,
+        });
+
+        await newMessage.save();
+
+        res.status(201).json({ msg: 'Pesan berhasil disimpan', data: newMessage });
+    } catch (err) {
+        console.error('Error simpan pesan:', err.message);
+        res.status(500).json({ msg: 'Gagal simpan pesan', error: err.message });
+    }
+}
   export async function getAllMessages(req, res) {
     try {
       const messages = await Message.find().sort({ createdAt: -1 }); // terbaru di atas
